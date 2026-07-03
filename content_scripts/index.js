@@ -636,6 +636,7 @@ async function waitForRecommendListRefresh(beforeFingerprint, { doc = document, 
     // 同时等待：1) DOM 指纹变化；2) 拦截到新的 geek-list 数据
     const waitForGeekList = new Promise((resolve) => {
         const handler = (event) => {
+            try { if (!/(^|\.)zhipin\.com$/.test(new URL(event.origin).hostname)) return; } catch (_) { return; }
             const data = event?.data;
             if (!data || data.source !== "boss-plugin") return;
             if (data.type !== "geek-list") return;
@@ -806,6 +807,8 @@ function waitForBossPluginMessage({ type, predicate, timeoutMs = 15000 }) {
 
         function onMessage(event) {
             try {
+                // 仅接受 zhipin 各子域发来的消息，挡掉第三方 iframe 伪造 boss-plugin 数据
+                try { if (!/(^|\.)zhipin\.com$/.test(new URL(event.origin).hostname)) return; } catch (_) { return; }
                 const data = event?.data;
                 if (!data || data.source !== "boss-plugin") return;
                 if (data.type !== type) return;

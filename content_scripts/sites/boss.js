@@ -266,6 +266,9 @@ class BossParser extends BaseParser {
             // console.log('消息数据:', event.data);
             // console.log('消息来源URL:', event.origin);
 
+            // 仅接受 zhipin 各子域发来的消息，挡掉第三方 iframe 伪造（跨帧转发仍放行，因为都是 zhipin 域）
+            try { if (!/(^|\.)zhipin\.com$/.test(new URL(event.origin).hostname)) return; } catch (_) { return; }
+
             // 允许来自boss-plugin的消息，无论来源窗口是什么
             // 因为iframe中的内容也可能发送数据
             const isValidSource = event.data && event.data.source === 'boss-plugin';

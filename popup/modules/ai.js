@@ -258,9 +258,9 @@ async function checkAIConnection() {
 		}
 	} else {
 		if (statusBadge) statusBadge.className = 'ai-status-badge disconnected';
-		if (statusText) statusText.innerHTML =  '<span >* 请配置AI API密钥</span>';
+		if (statusText) statusText.textContent = '* 请配置 AI API 密钥';
 		hideBalanceDisplay();
-		console.warn('AI配置缺少Token:', serverData.ai_config);
+		console.warn('AI 配置缺少 Token');
 	}
 }
 
