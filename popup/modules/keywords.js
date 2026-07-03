@@ -126,16 +126,22 @@ function createTag(keyword, onRemove, options = {}) {
         div.style.color = "#ff4444";
     }
 
-    div.innerHTML = `
-        ${keyword}
-        <button class="remove-keyword" style="${options.exclude ? 'color:#ff4444' : ''}" data-keyword="${keyword}">
-            &times;
-        </button>
-    `;
+    // 用 textContent 构建，绝不把用户关键词拼进 innerHTML（防扩展特权页 DOM 注入/XSS）
+    const label = document.createElement("span");
+    label.className = "keyword-text";
+    label.textContent = keyword;
 
-    div.querySelector(".remove-keyword").addEventListener("click", () => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "remove-keyword";
+    button.textContent = "×";
+    button.dataset.keyword = keyword;
+    if (options.exclude) button.style.color = "#ff4444";
+    button.addEventListener("click", () => {
         onRemove(keyword);
     });
+
+    div.append(label, " ", button);
 
     return div;
 }
