@@ -78,6 +78,12 @@ export async function addLog(message, type = "info") {
     if (!logContainer) return;
 
     const t = LOG_TYPES.has(type) ? type : "info";
+
+    // 出错时自动展开运行日志提醒用户；仅本次可见，不改动用户的持久化设置
+    if (t === "error") {
+        document.documentElement.classList.add("log-shown");
+    }
+
     const ts = new Date().toLocaleTimeString("zh-CN", {
         hour12: false,
         hour: "2-digit",
