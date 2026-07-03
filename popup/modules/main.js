@@ -179,6 +179,24 @@ function bindUIEvents() {
         });
     }
 
+    // 自动打招呼开关（默认关闭：AI 通过只标记/入池，不自动打招呼）
+    const greetingSelect = document.getElementById("greeting-enabled-select");
+    if (greetingSelect) {
+        greetingSelect.value = serverData.runModeConfig?.greetingEnabled ? "on" : "off";
+        greetingSelect.addEventListener("change", async (e) => {
+            const on = e.target.value === "on";
+            if (!serverData.runModeConfig) serverData.runModeConfig = {};
+            serverData.runModeConfig.greetingEnabled = on;
+            await saveSettings();
+            addLog(
+                on
+                    ? "已开启自动打招呼：AI 通过后会自动向候选人打招呼（注意每日上限与账号风险）"
+                    : "已关闭自动打招呼：AI 通过只标记并收入人才池，不会打招呼",
+                on ? "warning" : "info"
+            );
+        });
+    }
+
     // 页内浮窗（仅 Boss 直聘页面可用）
     document.getElementById("float-panel-btn")?.addEventListener("click", async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

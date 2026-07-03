@@ -151,8 +151,8 @@ export async function initializeFromServer() {
                 clickFrequency: result.hr_assistant_settings.clickFrequency ?? 7,
                 communicationConfig: result.hr_assistant_settings.communicationConfig || serverData.communicationConfig,
                 runModeConfig: {
-                    ...(result.hr_assistant_settings.runModeConfig || serverData.runModeConfig),
-                    greetingEnabled: false,
+                    ...serverData.runModeConfig,
+                    ...(result.hr_assistant_settings.runModeConfig || {}),
                 },
                 batchConfig: result.hr_assistant_settings.batchConfig || serverData.batchConfig,
             });
