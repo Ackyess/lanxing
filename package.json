@@ -1,0 +1,14 @@
+{
+  "name": "lanxing-recovered",
+  "version": "1.0.6",
+  "private": true,
+  "description": "Recovered local workspace for the 揽星 Chrome extension.",
+  "type": "module",
+  "scripts": {
+    "validate": "node scripts/validate-extension.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "syntax": "node scripts/check-js-syntax.mjs",
+    "check": "npm run validate && npm run test && npm run syntax",
+    "package": "node scripts/package-extension.mjs"
+  }
+}

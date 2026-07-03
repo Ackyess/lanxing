@@ -1,0 +1,45 @@
+{
+   "action": {
+      "default_popup": "popup/index.html"
+   },
+   "background": {
+      "service_worker": "background.js"
+   },
+   "content_scripts": [ {
+      "all_frames": true,
+      "js": [ "content_scripts/sites/boss_injector.js" ],
+      "matches": [ "*://*.zhipin.com/*" ],
+      "run_at": "document_start"
+   }, {
+      "all_frames": true,
+      "js": [ "config.js", "utils/prompts.js", "utils/image.js", "utils/ai_helper.js", "utils/colors.js", "content_scripts/sites/boss.js", "content_scripts/candidate_helpers.js", "content_scripts/index.js" ],
+      "matches": [ "*://*.zhipin.com/*" ],
+      "run_at": "document_end"
+   }, {
+      "all_frames": false,
+      "js": [ "content_scripts/float_panel.js" ],
+      "matches": [ "*://*.zhipin.com/*" ],
+      "run_at": "document_end"
+   } ],
+   "description": "面向 HR 场景的 AI 辅助工具，用于简历初筛与信息整理，帮助提升招聘流程效率。",
+   "host_permissions": [ "https://*.zhipin.com/*", "https://*/*" ],
+   "icons": {
+      "128": "icons/128.png",
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkWD6ZsxsJ7Q0S6mRRWn7wfvXXpZ3Kl8xX/cOprsUrxvibgzPYZogrcYJBMS5WgyiD0yHPr6VxY4tPtD2J1W2hX4UvkIJALWiG4btGlsyBFKtGukwB+48SzKuNgQKhQe0nxxiPw0e5oDU4BmUli1yKrR5scS8nwYr5lhPZ4eot0JupgAcNFnfxf8HqCc8nfLfq3gTDCpU0kYo+uZDPLoHHhjEdesn4aB6cpbzHXzFCt993bsOPY4vbEtoT5CGUU/3qcfNSlfsWPvnbtYpK9D7XggRRfb2JJuAbqJVjcaCkSYPY6u3DN5AWmDSxlRLxjEQ8JhViChXyJ2RQdeRuPbu9QIDAQAB",
+   "manifest_version": 3,
+   "name": "HR 招聘 AI 助手｜揽星",
+   "permissions": [ "activeTab", "tabs", "webNavigation", "storage", "offscreen", "sidePanel" ],
+   "side_panel": {
+      "default_path": "popup/index.html"
+   },
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.0.6",
+   "web_accessible_resources": [ {
+      "matches": [ "https://*.zhipin.com/*" ],
+      "resources": [ "content_scripts/sites/boss_interceptor.js", "sounds/*.mp3", "popup/index.html" ]
+   } ]
+}

@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>岗位管理 - 揽星</title>
+    <style>
+        /* 设计语言：暖纸 + 海军蓝墨 + OKLCH 光谱强调 */
+        :root {
+            --bg: #ece4d5;
+            --panel: rgba(252, 247, 239, 0.92);
+            --panel-inset: rgba(24, 36, 58, 0.04);
+            --ink: #18243a;
+            --muted: #586377;
+            --faint: #8a93a5;
+            --line: rgba(24, 36, 58, 0.08);
+            --line-strong: rgba(24, 36, 58, 0.16);
+
+            --blue: oklch(56% 0.12 240);
+            --rose: oklch(58.5% 0.132 8.7);
+            --accent: var(--blue);
+            --accent-tint: color-mix(in oklch, var(--blue) 12%, transparent);
+            --danger: var(--rose);
+            --danger-tint: color-mix(in oklch, var(--rose) 12%, transparent);
+
+            --btn-grad1: #1c2740;
+            --btn-grad2: #131d30;
+
+            --radius-sm: 8px;
+            --radius-md: 16px;
+            --radius-pill: 999px;
+            --shadow: 0 12px 40px rgba(19, 30, 47, 0.10);
+            --font-mono: ui-monospace, "Cascadia Mono", "DM Mono", Consolas, monospace;
+            --ease: cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--ink);
+            height: 100vh;
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        button:focus-visible, input:focus-visible, textarea:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+
+        .app-layout { display: flex; height: 100%; width: 100%; }
+
+        /* --- 左侧侧边栏 --- */
+        .sidebar {
+            width: 340px;
+            flex-shrink: 0;
+            background: var(--panel);
+            border-right: 1px solid var(--line);
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+        }
+
+        /* "越大越细"：大标题轻，小标签重 */
+        .app-brand {
+            font-size: 22px;
+            font-weight: 450;
+            color: var(--ink);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+            letter-spacing: -0.01em;
+        }
+
+        .app-desc {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 22px;
+            padding-left: 2px;
+        }
+
+        /* 按钮组 */
+        .action-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 22px;
+        }
+        .full-width-btn { grid-column: span 2; }
+
+        .btn {
+            border: 1px solid transparent;
+            border-radius: var(--radius-pill);
+            padding: 10px 12px;
+            font-size: 13px;
+            font-weight: 650;
+            cursor: pointer;
+            transition: border-color 0.2s var(--ease), transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn-primary {
+            background: linear-gradient(180deg, var(--btn-grad1), var(--btn-grad2));
+            color: #f5efe3;
+            box-shadow: 0 10px 22px rgba(19, 29, 48, 0.18);
+        }
+        .btn-secondary { background: rgba(255, 255, 255, 0.5); border-color: var(--line); color: var(--ink); }
+        .btn-secondary:hover { border-color: var(--line-strong); }
+        .btn-danger { background: var(--danger-tint); color: var(--danger); }
+        .btn-danger:hover { background: color-mix(in oklch, var(--rose) 20%, transparent); }
+
+        /* --- 列表区域 --- */
+        .list-header {
+            font-size: 11px;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .list-container {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 6px;
+        }
+        .list-container::-webkit-scrollbar { width: 4px; }
+        .list-container::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+
+        /* --- 列表项卡片 --- */
+        .position-item {
+            background: rgba(255, 255, 255, 0.45);
+            border: 1px solid var(--line);
+            border-radius: var(--radius-md);
+            padding: 14px;
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            transition: border-color 0.2s var(--ease), transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+            cursor: pointer;
+            position: relative;
+        }
+
+        .position-item:hover {
+            border-color: var(--line-strong);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
+        }
+
+        .position-item.active {
+            border-color: var(--accent);
+            background: var(--accent-tint);
+        }
+
+        .position-title {
+            font-weight: 650;
+            font-size: 14px;
+            color: var(--ink);
+            line-height: 1.4;
+        }
+
+        /* 简介文字：限制 2 行 */
+        .position-preview {
+            font-size: 12px;
+            color: var(--faint);
+            line-height: 1.6;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+        }
+
+        /* 操作栏 */
+        .position-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            padding-top: 9px;
+            border-top: 1px solid var(--line);
+            margin-top: 2px;
+        }
+
+        .action-btn {
+            padding: 4px 13px;
+            font-size: 12px;
+            border-radius: var(--radius-pill);
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s var(--ease), color 0.2s var(--ease);
+        }
+        .btn-edit-item { background: var(--panel-inset); color: var(--muted); }
+        .btn-edit-item:hover { background: rgba(24, 36, 58, 0.09); color: var(--ink); }
+        .btn-delete-item { background: var(--danger-tint); color: var(--danger); }
+        .btn-delete-item:hover { background: color-mix(in oklch, var(--rose) 20%, transparent); }
+
+        /* --- 右侧编辑区域 --- */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--bg);
+        }
+
+        .editor-header {
+            height: 60px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 40px;
+            flex-shrink: 0;
+        }
+
+        .editor-body {
+            flex: 1;
+            padding: 36px 60px;
+            overflow-y: auto;
+            max-width: 960px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* 大输入标题：轻字重（越大越细） */
+        .input-title {
+            width: 100%;
+            font-size: 30px;
+            font-weight: 420;
+            letter-spacing: -0.01em;
+            border: none;
+            border-bottom: 2px solid transparent;
+            padding: 10px 0;
+            margin-bottom: 22px;
+            color: var(--ink);
+            background: transparent;
+            transition: border-color 0.2s var(--ease);
+        }
+        .input-title:focus { outline: none; border-bottom-color: var(--accent); }
+        .input-title::placeholder { color: var(--faint); }
+
+        .editor-label {
+            margin-bottom: 10px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        .editor-textarea {
+            width: 100%;
+            min-height: 500px;
+            border: none;
+            resize: none;
+            font-size: 15px;
+            line-height: 1.75;
+            color: var(--ink);
+            background: transparent;
+            padding: 0;
+        }
+        .editor-textarea:focus { outline: none; }
+        .editor-textarea::placeholder { color: var(--faint); }
+
+        .sidebar-footer {
+            font-size: 11px;
+            font-family: var(--font-mono);
+            color: var(--faint);
+            text-align: center;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="header-section">
+                <div class="app-brand">
+                    <span>✦</span> 揽星
+                </div>
+                <div class="app-desc">企业级岗位信息库管理系统</div>
+            </div>
+
+            <div class="action-group">
+                <button class="btn btn-primary full-width-btn" id="position-add-btn">
+                    <span>+</span> 新增岗位
+                </button>
+                <button class="btn btn-secondary" id="position-import-btn">导入 JSON</button>
+                <button class="btn btn-secondary" id="position-export-btn">导出数据</button>
+                <button class="btn btn-danger full-width-btn" id="position-delete-boss-btn">一键删除同步职位</button>
+                <input type="file" id="position-import-input" accept="application/json" style="display:none;" />
+            </div>
+
+            <div class="list-header">
+                <span>岗位列表</span>
+                <span id="position-count" style="font-weight:400">0 个</span>
+            </div>
+
+            <div class="list-container" id="position-list">
+                </div>
+            
+            <div class="sidebar-footer">自动保存至本地浏览器</div>
+        </aside>
+
+        <main class="main-content">
+            <header class="editor-header">
+                <div style="display:flex; gap:12px;">
+                    <button class="btn btn-secondary" onclick="window.close()">关闭窗口</button>
+                    <button id="position-save-btn" class="btn btn-primary" style="min-width: 100px;">保存修改</button>
+                </div>
+            </header>
+
+            <div class="editor-body">
+                <input type="text" id="position-editor-name" class="input-title" placeholder="在此输入岗位名称..." />
+                
+                <div class="editor-label">岗位详情描述</div>
+                <textarea id="position-editor-description" class="editor-textarea" placeholder="请输入详细的岗位要求...
+
+1. 岗位职责
+2. 任职要求
+3. 加分项"></textarea>
+            </div>
+        </main>
+    </div>
+
+    <script src="../config.js"></script>
+    <script type="module" src="./modules/positions_page.js"></script>
+</body>
+</html>

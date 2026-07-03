@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <title>揽星 AI 助手</title>
+    <script src="./view_mode.js"></script>
+    <link rel="stylesheet" href="style.css" />
+    </head>
+
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="brand-container">
+                <div class="logo-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                    </svg>
+                </div>
+                
+                <div class="brand-text">
+                    <div class="brand-title">揽星</div>
+                    <div class="brand-meta">
+                        <span id="version" class="version-badge">v1.0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <button class="config-btn" id="float-panel-btn" title="在 Boss 直聘页面内以可拖动浮窗显示">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3H9a2 2 0 0 0-2 2v2"></path><path d="M3 9h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="none"></path><path d="M21 3v10a2 2 0 0 1-2 2h-2"></path></svg>
+                    <span>浮窗</span>
+                </button>
+
+                <button class="config-btn" id="ai-config-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span>设置</span>
+                </button>
+            </div>
+        </header>
+        <main class="app-content">
+            
+            <div class="card status-card">
+                <div class="card-header">
+                    <span class="card-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"></path></svg>
+                        AI 连接状态
+                    </span>
+                    <div class="ai-status-badge" id="ai-status-badge">
+                        <span class="status-dot"></span>
+                        <span id="ai-status-text">检查中...</span>
+                    </div>
+                </div>
+                <div class="status-details">
+                    <div class="detail-item">
+                        <span class="label">当前模型</span>
+                        <span class="value" id="ai-current-model-text">--</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="label">Token余额</span>
+                        <span class="value highlight" id="ai-balance-text">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card talent-pool-card">
+                <div class="card-header">
+                    <span class="card-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                        通过人才池
+                    </span>
+                    <span class="talent-pool-count" id="talent-pool-count">0 人</span>
+                </div>
+                <div class="talent-pool-actions">
+                    <button class="job-action-btn job-action-btn-primary" id="rank-approved-candidates">AI 横评排序</button>
+                    <button class="job-action-btn job-action-btn-ghost" id="export-approved-candidates">导出通过人才</button>
+                    <button class="job-action-btn job-action-btn-ghost" id="clear-approved-candidates">清空人才池</button>
+                </div>
+                <div class="talent-pool-hint">自动收录 AI 审核通过的牛人，支持按当前岗位优先横评，输出优先级排序。</div>
+                <div class="talent-pool-list" id="talent-pool-list">
+                    <div class="talent-pool-empty">暂无 AI 审核通过的人才</div>
+                </div>
+            </div>
+
+            <div class="card job-card">
+                <div class="card-header">
+                    <span class="card-title">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                        岗位管理
+                    </span>
+                    <div class="job-header-actions">
+                        <button class="job-action-btn job-action-btn-primary" id="sync-boss-job-list">
+                            <span class="btn-label">一键同步岗位</span>
+                            <span class="btn-spinner" aria-hidden="true"></span>
+                        </button>
+                        <button class="job-action-btn job-action-btn-ghost" id="openPositionManager">管理面板</button>
+                    </div>
+                </div>
+                
+                <div class="queue-box">
+                    <div class="queue-header">
+                        <div class="queue-title">运行队列</div>
+                        <div class="queue-actions">
+                            <button class="queue-btn" id="queue-add-btn" type="button">+</button>
+                        </div>
+                    </div>
+                    <div class="queue-hint">默认 1 条；点 + 添加下一条；每条数量范围 1-200；禁止重复岗位</div>
+                    <div class="queue-list" id="queue-list"></div>
+                </div>
+
+                <div class="greet-daily-row">
+                    <div class="greet-progress" id="greet-daily-progress" title="">今日打招呼：--/200</div>
+                    <button class="greet-reset-btn" id="greet-daily-reset" type="button" title="清空今日计数">清零</button>
+                </div>
+
+                <div class="batch-status-box" id="batch-status-box" style="display:none;">
+                    <div class="batch-status-title">运行进度</div>
+                    <div class="batch-status-text" id="batch-status-text">--</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <p><b>流程：</b>配置 AI &rarr; 选择岗位 &rarr; 打开牛人列表页 &rarr; 点击开始；AI 通过的人才会自动进入人才池，可继续横评导出。</p>
+            </div>
+        </main>
+
+        <footer class="app-footer">
+            <div class="terminal-window">
+                <div class="terminal-header">运行日志</div>
+                <div id="log-container" class="terminal-body">
+                    <div class="log-line system">> 等待指令...</div>
+                </div>
+            </div>
+
+            <div class="control-panel">
+                <div class="initial-buttons" id="initialButtons">
+                    <button id="scrollButton" class="main-btn start-btn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+                        <span>AI 辅助分析简历</span>
+                    </button>
+                    <div class="sub-buttons">
+                        <button id="testButton" class="secondary-btn manual-btn" title="只处理当前岗位下第一个未处理候选人，用来验证详情截图和 AI 判断链路">单人试跑</button>
+                    </div>
+                </div>
+
+                <div class="stop-buttons hidden" id="stopButtons">
+                    <button id="stopButton" class="main-btn stop-btn">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>
+                        <span>停止运行</span>
+                    </button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <div class="modal-overlay" id="ai-config-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>AI 参数配置</h3>
+                <button class="close-modal" id="ai-config-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>AI API Token</label>
+                    <input type="password" id="ai-token" placeholder="粘贴你的 API Token" autocomplete="off" spellcheck="false" />
+                </div>
+                <div class="form-group">
+                    <label>第三方 API URL（可选）</label>
+                    <input type="url" id="ai-base-url" placeholder="https://api.openai.com/v1" autocomplete="off" spellcheck="false" inputmode="url" />
+                </div>
+                <div class="form-group">
+                    <label>选择模型</label>
+                    <select id="ai-model">
+                        <option value="gpt-5.5">gpt-5.5 (默认)</option>
+                        <option value="Qwen/Qwen3-VL-32B-Instruct">Qwen3-VL-32B (推荐)</option>
+                        <option value="custom">自定义模型...</option>
+                    </select>
+                </div>
+                <input type="text" id="ai-custom-model" class="custom-input" placeholder="输入模型名称" style="display:none;" />
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>面板显示方式</label>
+                    <select id="view-mode-select">
+                        <option value="popup">工具栏弹窗（默认）</option>
+                        <option value="side">浏览器侧边栏</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="save-btn" id="ai-config-save2">保存并生效</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../config.js"></script>
+    <script src="../utils/prompts.js"></script>
+    <script src="../utils/image.js"></script>
+    <script src="../utils/ai_helper.js"></script>
+    <script src="../utils/colors.js"></script>
+    <script type="module" src="./modules/main.js"></script>
+</body>
+</html>

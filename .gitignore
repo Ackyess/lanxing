@@ -1,0 +1,18 @@
+# Chrome runtime and locks
+*.log
+LOCK
+CURRENT
+MANIFEST-*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Build output
+/dist/
+/_metadata/
+
+# Optional local backups
+runtime-backup/
