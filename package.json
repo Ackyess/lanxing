@@ -1,8 +1,8 @@
 {
-  "name": "lanxing-recovered",
+  "name": "lanxing",
   "version": "1.0",
   "private": true,
-  "description": "Recovered local workspace for the 揽星 Chrome extension.",
+  "description": "揽星 · Boss 直聘 AI 简历初筛 Chrome 扩展",
   "type": "module",
   "scripts": {
     "validate": "node scripts/validate-extension.mjs",

@@ -52,7 +52,6 @@ background.js        service worker：帧路由、截图、面板显示方式
 content_scripts/     Boss 直聘页自动化、数据提取、页内浮窗
 popup/               面板 UI（弹窗/侧边栏/浮窗共用）+ 模块脚本
 utils/               AI 请求、图像、提示词、鉴权等工具
-docs/                内部计划与恢复记录
 ```
 
 

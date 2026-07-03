@@ -29,14 +29,12 @@
       "32": "icons/32.png",
       "48": "icons/48.png"
    },
-   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkWD6ZsxsJ7Q0S6mRRWn7wfvXXpZ3Kl8xX/cOprsUrxvibgzPYZogrcYJBMS5WgyiD0yHPr6VxY4tPtD2J1W2hX4UvkIJALWiG4btGlsyBFKtGukwB+48SzKuNgQKhQe0nxxiPw0e5oDU4BmUli1yKrR5scS8nwYr5lhPZ4eot0JupgAcNFnfxf8HqCc8nfLfq3gTDCpU0kYo+uZDPLoHHhjEdesn4aB6cpbzHXzFCt993bsOPY4vbEtoT5CGUU/3qcfNSlfsWPvnbtYpK9D7XggRRfb2JJuAbqJVjcaCkSYPY6u3DN5AWmDSxlRLxjEQ8JhViChXyJ2RQdeRuPbu9QIDAQAB",
    "manifest_version": 3,
    "name": "HR 招聘 AI 助手｜揽星",
    "permissions": [ "activeTab", "tabs", "webNavigation", "storage", "offscreen", "sidePanel" ],
    "side_panel": {
       "default_path": "popup/index.html"
    },
-   "update_url": "https://clients2.google.com/service/update2/crx",
    "version": "1.0",
    "web_accessible_resources": [ {
       "matches": [ "https://*.zhipin.com/*" ],
