@@ -165,14 +165,19 @@ a:focus-visible {
 .logo-box {
     width: 34px;
     height: 34px;
-    background: linear-gradient(180deg, var(--btn-grad1), var(--btn-grad2));
+    background: #fdfaf3; /* 暖白瓷砖：奶油兔在浅底上更清楚，呼应扩展图标 */
+    border: 1px solid var(--line);
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #f5efe3;
     flex-shrink: 0;
-    box-shadow: 0 6px 16px rgba(19, 29, 48, 0.18);
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(19, 29, 48, 0.10);
+}
+
+.logo-box .logo-mark {
+    display: block;
 }
 
 .brand-text {
