@@ -1944,12 +1944,29 @@ async function takeCanvasScreenshot(canvasRect) {
 }
 
 // 处理来自popup的消息
+// 本监听器负责处理的消息类型。其余（扩展内部广播，如 LOG_MESSAGE / TALENT_POOL_UPDATED /
+// 打招呼进度等）会被同扩展所有 frame 的 content script 一并收到，不属于本监听器职责——
+// 直接让出，避免落到 default 分支误报“未知的消息类型”。
+const HANDLED_MESSAGE_TYPES = new Set([
+    'PING_CONTENT', 'START_AI_SCROLL', 'STOP_SCROLL', 'UPDATE_KEYWORDS', 'SETTINGS_UPDATED',
+    'COMMUNICATION_PROCESS', 'OPEN_FIRST_DETAIL', 'MARK_CANDIDATE', 'GREET_CANDIDATE',
+    'GET_RESUME_RECT', 'SCROLL_TO_NEXT', 'CLOSE_DETAIL', 'REMOVE_ADS', 'SHOW_ADS',
+    'ADD_APPROVED_CANDIDATE', 'EXPORT_APPROVED_CANDIDATES', 'CLEAR_APPROVED_CANDIDATES',
+    'SYNC_BOSS_JOBS', 'SWITCH_RECOMMEND_JOB',
+]);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 只在主frame中处理某些消息
     const isMainFrame = window.top === window.self;
     const mainFrameOnlyMessages = ['START_AI_SCROLL', 'STOP_SCROLL', 'GET_RESUME_RECT', 'OPEN_FIRST_DETAIL', 'CLOSE_DETAIL', 'SCROLL_TO_NEXT'];
     
     const messageType = message.action || message.type;
+
+    // 不认识的消息类型直接让出：不 sendResponse、不 return true，交给真正的接收端
+    // （popup / background）处理，避免刷红“未知的消息类型”与连带的 message-port 警告。
+    if (!HANDLED_MESSAGE_TYPES.has(messageType)) {
+        return false;
+    }
 
     // BOSS 推荐牛人页面通常在 iframe 内：
     // - popup 默认只给 top frame 发消息（frameId=0）
