@@ -133,6 +133,22 @@ html.view-side .terminal-window {
     height: 100%;
 }
 
+/* 运行日志默认折叠：隐藏日志面板，主区占满，控制栏落到底部单栏。
+   设置里开启后加 html.log-shown，恢复上面的双栏（含日志）布局。 */
+html:not(.log-shown) .terminal-window { display: none; }
+html:not(.log-shown) .app-container {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+        "header"
+        "content"
+        "footer";
+}
+html:not(.log-shown) .app-footer {
+    border-left: none;
+    border-top: 1px solid var(--line);
+}
+
 /* 统一焦点环（单一来源：--accent） */
 button:focus-visible,
 input:focus-visible,

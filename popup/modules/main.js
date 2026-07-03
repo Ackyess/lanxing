@@ -170,6 +170,21 @@ function bindUIEvents() {
         });
     }
 
+    // 运行日志显示/折叠（默认折叠），改动即时生效
+    const logSelect = document.getElementById("log-visible-select");
+    if (logSelect) {
+        chrome.storage.local.get("lanxing_show_log").then((res) => {
+            const shown = !!res.lanxing_show_log;
+            logSelect.value = shown ? "shown" : "hidden";
+            document.documentElement.classList.toggle("log-shown", shown);
+        });
+        logSelect.addEventListener("change", (e) => {
+            const shown = e.target.value === "shown";
+            chrome.storage.local.set({ lanxing_show_log: shown });
+            document.documentElement.classList.toggle("log-shown", shown);
+        });
+    }
+
     // 页内浮窗（仅 Boss 直聘页面可用）
     document.getElementById("float-panel-btn")?.addEventListener("click", async () => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
