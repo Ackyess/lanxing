@@ -11,6 +11,21 @@
     // 先保存原始 fetch，后续用于页面上下文主动请求（避免递归拦截）
     const originalFetch = window.fetch;
 
+    // 账号安全模式：默认严格（true）。严格模式下拦截器不转发任何 BOSS 接口数据、
+    // 也不响应主动 fetch，直到内容脚本明确告知处于高级（授权集成）模式。
+    let lanxingStrictMode = true;
+    window.addEventListener('message', (event) => {
+        try {
+            if (event.source !== window) return;
+            const msg = event.data;
+            if (!msg || msg.source !== 'lanxing' || msg.type !== 'LANXING_SAFETY_MODE') return;
+            lanxingStrictMode = msg.strict !== false;
+        } catch (e) {
+            // 出错时保持严格
+            lanxingStrictMode = true;
+        }
+    });
+
     const TARGET_RULES = [
         // 候选人列表
         { pattern: '/wapi/zprelation/interaction/bossGetGeek', type: 'geek-list' },
@@ -55,6 +70,17 @@
             const url = msg.url || '';
             if (!requestId || typeof requestId !== 'string') return;
             if (!url || typeof url !== 'string') return;
+            // 严格模式下拒绝一切主动 fetch（账号安全模式不触碰平台接口）
+            if (lanxingStrictMode) {
+                window.postMessage({
+                    source: 'boss-plugin',
+                    type: 'lanxing-fetch-error',
+                    requestId,
+                    url,
+                    error: 'SAFETY_MODE_STRICT'
+                }, '*');
+                return;
+            }
             if (!isAllowedFetchUrl(url)) {
                 window.postMessage({
                     source: 'boss-plugin',
@@ -163,6 +189,8 @@
         }
 
         return originalFetch.apply(this, args).then((res) => {
+            // 严格模式下不转发页面自身接口响应（不广播 BOSS 内部数据流）
+            if (lanxingStrictMode) return res;
             try {
                 const cloned = res.clone();
                 const contentType = cloned.headers.get('content-type') || '';
@@ -191,6 +219,7 @@
 
         xhr.addEventListener('load', function () {
             try {
+                if (lanxingStrictMode) return; // 严格模式不转发 XHR 接口响应
                 const rule = matchTargetRule(requestUrl);
                 if (rule) {
                     const contentType = xhr.getResponseHeader('content-type') || '';
@@ -245,9 +274,9 @@
     // 监听页面内部的postMessage
     const originalPostMessage = window.postMessage;
     window.postMessage = function(message, targetOrigin, transfer) {
-        // 拦截页面内部的消息
+        // 拦截页面内部的消息（严格模式下不转发任何平台内部消息）
         try {
-            if (message && typeof message === 'object') {
+            if (!lanxingStrictMode && message && typeof message === 'object') {
                 // 检查是否是BOSS相关的消息
                 if (message.type && (
                     message.type.includes('RESUME') ||

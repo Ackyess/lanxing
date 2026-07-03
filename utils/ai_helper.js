@@ -194,7 +194,8 @@ const HR_AI_UTILS = {
     },
 
     async extractResumeText(imageData, candidateText, aiConfig) {
-        if (!aiConfig || !aiConfig.token) {
+        // 经 background 代理时 token 由后台注入，content 侧 aiConfig 可以不含 token
+        if (!aiConfig || (!aiConfig.token && !this.shouldProxyThroughBackground())) {
             return { success: false, error: "AI配置无效或缺失Token", text: "" };
         }
 
@@ -360,9 +361,60 @@ const HR_AI_UTILS = {
         return { decision: "是", reason: reason || "强匹配，可优先沟通" };
     },
 
+    normalizeCardLevel(value) {
+        const s = String(value || "").trim();
+        // 先判否定：避免“不推荐 / 非优先 / not recommended”命中正向子串被误判为“推荐”
+        if (/不建议|不推荐|不匹配|不合适|非优先|淘汰|拒绝|reject|not\s*recommend|low|低匹配/i.test(s)) return "不建议";
+        if (/推荐|优先|pass|yes|recommend|高匹配|强匹配/i.test(s)) return "推荐";
+        return "待定";
+    },
+
+    // 账号安全模式：只读“当前可见候选人卡片”初筛（纯文本，无截图/OCR/详情）
+    // 输出三档建议：推荐看详情 / 待定 / 不建议——只作为 HR 参考，不触发任何平台动作。
+    async analyzeCandidateCard(candidateText, positionName, jobDescription, aiConfig) {
+        if (!aiConfig || (!aiConfig.token && !this.shouldProxyThroughBackground())) {
+            return { level: "待定", reason: "AI配置无效或缺失Token" };
+        }
+
+        const systemPrompt = [
+            "你是资深HR初筛助手。只依据下方“候选人卡片信息”（来自招聘页面公开展示的卡片文本，并非完整简历）给出初筛建议。",
+            "你的输出只作为HR参考，HR会自行查看详情并决定；你不代表也不触发任何平台动作。",
+            "信息有限时不要臆测：缺关键信息就归入“待定”，不要编造经历或联系方式。",
+            `目标岗位：${positionName || "未提供"}`,
+            `岗位要求：${jobDescription || "未提供"}`,
+            "只输出JSON：{\"level\":\"推荐|待定|不建议\",\"reason\":\"30字以内中文理由\"}。",
+            "level含义：推荐=值得打开详情进一步看；待定=信息不足或部分匹配；不建议=明显不匹配。"
+        ].join("\n");
+
+        const userPrompt = `候选人卡片信息：\n${String(candidateText || "").slice(0, 1800)}\n\n请给出初筛建议JSON。`;
+        const messages = this.buildMessages(systemPrompt, userPrompt, null);
+        const apiConfig = this.buildApiConfig({}, aiConfig);
+        const result = await this.sendRequest(apiConfig, aiConfig, messages);
+
+        if (!result.success) {
+            return { level: "待定", reason: `请求失败:${result.error}` };
+        }
+
+        const content = String(result.response || "");
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                const level = this.normalizeCardLevel(parsed.level);
+                const reason = String(parsed.reason || "").replace(/\s+/g, " ").trim().slice(0, 60);
+                return { level, reason: reason || "—" };
+            } catch (e) {
+                // fall through to fallback
+            }
+        }
+
+        const fallback = content.slice(0, 60).replace(/\s+/g, " ").trim();
+        return { level: "待定", reason: fallback || "AI未返回结构化结果" };
+    },
+
     // 6. 分析候选人简历（整合流程 - 通用）
     async analyzeCandidateResume(imageData, candidateText, positionName, jobDescription, aiConfig, userPromptTemplate) {
-        if (!aiConfig || !aiConfig.token) {
+        if (!aiConfig || (!aiConfig.token && !this.shouldProxyThroughBackground())) {
             return { decision: "否", reason: "AI配置无效或缺失Token" };
         }
 

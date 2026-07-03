@@ -3,7 +3,7 @@
 // ===============================
 
 import { addLog } from "./ui.js";
-import { serverData, AI_PROMPTS } from "./data.js";
+import { serverData, AI_PROMPTS, aiConfigForContent } from "./data.js";
 import { sendDirectAIRequest } from "./ai.js";
 import { sendToBossFrame } from "./frame_bridge.js";
 
@@ -223,7 +223,7 @@ export async function captureResume() {
             positionId: serverData.currentPosition?.id,
             positionName: serverData.currentPosition?.name,
             jobDescription: serverData.currentPosition?.description,
-            aiConfig: serverData.ai_config,
+            aiConfig: aiConfigForContent(),
             skipProcessed: true // 告诉 content script 跳过已处理（红/绿）的
         },
     }, 30000).catch((error) => {
@@ -234,6 +234,18 @@ export async function captureResume() {
         addLog(`打开详情页失败: ${msg}`, "error");
         throw error;
     });
+
+    // 被账号安全模式拦截或打开详情失败时，直接明确报错，避免后续 ~25s 无谓轮询
+    if (openResult?.blocked || openResult?.error === "ACCOUNT_SAFETY_MODE_BLOCKED") {
+        const err = new Error("账号安全模式已开启：单人试跑等平台自动化操作已停用");
+        addLog(err.message, "warning");
+        throw err;
+    }
+    if (!openResult?.success) {
+        const err = new Error(`打开详情页失败：${openResult?.error || "未找到可处理的候选人"}`);
+        addLog(err.message, "error");
+        throw err;
+    }
 
     // 获取候选人信息
     const candidateInfo = openResult.candidate;

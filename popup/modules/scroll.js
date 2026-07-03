@@ -1,4 +1,4 @@
-import { serverData, saveState, runtimeState } from "./data.js";
+import { serverData, saveState, runtimeState, aiConfigForContent } from "./data.js";
 import { addLog, updateUI } from "./ui.js";
 import { sendToBossFrame } from "./frame_bridge.js";
 import { buildBatchPlan } from "./batch_plan.js";
@@ -12,6 +12,12 @@ export async function startAutoScroll() {
 		addLog('⚠️ 请先选择岗位', 'error');
 		runtimeState.isRunning = false;
 		updateUI({ isRunning: runtimeState.isRunning, isDownloading: runtimeState.isDownloading });
+		return;
+	}
+
+	// Token 已隔离到 background，content 侧不再校验 token，这里在 popup 侧先把关
+	if (!serverData.ai_config?.token) {
+		addLog('请先在「设置」里配置 AI Token', 'error');
 		return;
 	}
 
@@ -46,7 +52,7 @@ export async function startAutoScroll() {
 		try {
 			const plan = batchPlan || null;
 			const first = plan?.[0] || null;
-			await sendToBossFrame({
+			const startResp = await sendToBossFrame({
 				target: "recommend",
 				message: {
 					action: "START_AI_SCROLL",
@@ -54,7 +60,7 @@ export async function startAutoScroll() {
 						positionId: first?.positionId || serverData.currentPosition.id,
 						positionName: first?.positionName || serverData.currentPosition.name,
 						jobDescription: first?.jobDescription || serverData.currentPosition.description,
-						aiConfig: serverData.ai_config,
+						aiConfig: aiConfigForContent(),
 						matchLimit: first?.matchLimit || serverData.matchLimit,
 						batchPlan: plan,
 						scrollDelayMin: serverData.scrollDelayMin || 3,
@@ -67,6 +73,15 @@ export async function startAutoScroll() {
 				},
 				timeoutMs: 20000
 			});
+
+			// 若内容脚本因账号安全模式拦截了启动，回滚 UI 的“运行中”状态（终审 #4）
+			if (startResp?.data?.blocked) {
+				addLog("账号安全模式已开启：全自动运行已被拦截", "warning");
+				runtimeState.isRunning = false;
+				updateUI({ isRunning: runtimeState.isRunning, isDownloading: runtimeState.isDownloading });
+				await chrome.storage.local.set({ isRunning: false });
+				return;
+			}
 		} catch (e) {
 			console.error("发送消息失败:", e);
 			addLog("⚠️ 无法连接到页面，请刷新页面", "error");

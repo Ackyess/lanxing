@@ -49,14 +49,32 @@ export function validateManualAIConfig(config) {
     }
     const baseUrl = normalizeManualApiBaseUrl(config?.baseUrl);
     if (baseUrl) {
-        try {
-            const parsed = new URL(baseUrl);
-            if (!["http:", "https:"].includes(parsed.protocol)) {
-                throw new Error("invalid_protocol");
-            }
-        } catch (error) {
-            throw new Error("请填写有效的第三方 API URL，例如 https://api.example.com/v1/chat/completions");
-        }
+        validateSecureApiBaseUrl(baseUrl);
     }
     return true;
+}
+
+// 外部 AI 地址强制 HTTPS；HTTP 仅允许本机回环（localhost/127.0.0.1/::1）用于本地调试，
+// 避免 Token 与候选人数据明文经网络传输。
+export function validateSecureApiBaseUrl(baseUrl) {
+    const raw = normalizeManualApiBaseUrl(baseUrl);
+    if (!raw) return true;
+
+    let parsed;
+    try {
+        parsed = new URL(raw);
+    } catch (error) {
+        throw new Error("请填写有效的第三方 API URL，例如 https://api.example.com/v1/chat/completions");
+    }
+
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, "");
+    const isLoopback =
+        ["localhost", "127.0.0.1", "::1"].includes(hostname) ||
+        hostname === "0.0.0.0" ||
+        /^127\./.test(hostname);
+
+    if (parsed.protocol === "https:") return true;
+    if (parsed.protocol === "http:" && isLoopback) return true;
+
+    throw new Error("AI API 地址必须使用 HTTPS；HTTP 仅允许 localhost / 127.0.0.1 本地调试");
 }

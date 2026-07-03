@@ -7,11 +7,25 @@ const AI_PROMPTS = window.HR_SYSTEM_PROMPTS || {
     SYSTEM_PROMPT: "配置加载失败",
     USER_PROMPT: "配置加载失败"
 };
+import { migrateLegacyPlaintextToken, getSessionToken } from "./token_store.js";
+
 const runtimeConfig = window.LANXING_CONFIG || {};
 const fixedAIConfig = runtimeConfig.DEFAULT_AI_CONFIG || {};
 const isFixedAIConfig = fixedAIConfig.locked === true;
 
 export { AI_PROMPTS }; // 重新导出以便其他模块使用
+
+// 账号安全模式单独存一个 key，只由 safety.js 写入。
+// 不放进 hr_assistant_settings，避免任意面板的岗位/关键词保存把它连带写回（陈旧写回会绕过解锁短语）。
+export const ACCOUNT_SAFETY_MODE_KEY = "lanxing_account_safety_mode";
+
+// 发往 content script 的 aiConfig 一律去掉 token：
+// content script 不需要 token（AI 请求统一经 background 代理，由 background 注入 token）。
+// Token 不进入页面所在的 content-script 上下文，缩小泄露面。
+export function aiConfigForContent(config = serverData.ai_config) {
+    const { token, ...rest } = config || {};
+    return rest;
+}
 
 function getDefaultAIConfig() {
     return {
@@ -42,6 +56,8 @@ export let serverData = {
     scrollDelayMin: 3,
     scrollDelayMax: 5,
     clickFrequency: 7,
+    // 账号安全模式：'strict'（默认，只读初筛，无平台自动化） / 'advanced'（需显式解锁授权集成）
+    accountSafetyMode: 'strict',
     communicationConfig: {
         enabled: false,
         phone: false,
@@ -95,6 +111,7 @@ export async function saveSettings() {
             }
         }
 
+        // ai_config 落本地时去掉 token（token 只存 storage.session / 加密本地）
         await chrome.storage.local.set({
             hr_assistant_settings: {
                 positions: serverData.positions,
@@ -109,7 +126,7 @@ export async function saveSettings() {
                 runModeConfig: serverData.runModeConfig,
                 batchConfig: serverData.batchConfig,
             },
-            ai_config: serverData.ai_config,
+            ai_config: aiConfigForContent(serverData.ai_config),
             ai_expire_time: serverData.ai_expire_time,
         });
 
@@ -136,8 +153,12 @@ export async function initializeFromServer() {
             "hr_assistant_settings",
             "ai_expire_time",
             "ai_config",
+            ACCOUNT_SAFETY_MODE_KEY,
             GREET_DAILY_STORAGE_KEY,
         ]);
+
+        // 账号安全模式从独立 key 读取，缺失/异常一律回落到严格（fail-safe）
+        serverData.accountSafetyMode = result[ACCOUNT_SAFETY_MODE_KEY] === "advanced" ? "advanced" : "strict";
 
         if (result.hr_assistant_settings) {
             Object.assign(serverData, {
@@ -165,6 +186,14 @@ export async function initializeFromServer() {
             Object.assign(serverData.ai_config, result.ai_config);
         }
         applyFixedAIConfig();
+
+        // Token 加固：旧版明文 token 迁移进会话并抹掉本地明文；
+        // 之后活 token 只从 storage.session 读取（content script 读不到）。
+        if (!isFixedAIConfig) {
+            let liveToken = await migrateLegacyPlaintextToken();
+            if (!liveToken) liveToken = await getSessionToken();
+            serverData.ai_config.token = liveToken || "";
+        }
 
         // 读取每日打招呼统计（可能不存在）
         try {

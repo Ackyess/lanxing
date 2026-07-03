@@ -309,7 +309,7 @@ async function upsertApprovedCandidateToPool({
         positionId: String(positionId || "").trim(),
         positionName: String(positionName || "").trim(),
         jobDescription: normalizeStoredText(jobDescription || "", 4000),
-        aiReason: normalizeStoredText(aiReason || "", 120),
+        aiReason: normalizeStoredText((window.LANXING_COMPLIANCE?.filterText?.(aiReason)?.text) ?? aiReason ?? "", 120),
         simpleText: normalizeStoredText(simpleText || "", 2400),
         detailText: normalizeLongStoredText(detailText || simpleText || existing?.detailText || "", 12000),
         resumeText: normalizeLongStoredText(resumeText || existing?.resumeText || "", 50000),
@@ -351,6 +351,57 @@ try {
 } catch (e) {
     // 在扩展上下文失效时可能抛错，忽略
 }
+
+// ======================================================
+// 账号安全模式（默认严格）：内容脚本侧的硬门禁标记
+// 严格模式下所有 BOSS 平台自动化动作在消息入口被拦截，
+// 只放行只读分析、本地标记、人才池、连通性检查等无平台动作的消息。
+// ======================================================
+const ACCOUNT_SAFETY_MODE_KEY = "lanxing_account_safety_mode";
+let ACCOUNT_SAFETY_STRICT = true;
+
+async function loadAccountSafetyMode() {
+    try {
+        const res = await storageGet([ACCOUNT_SAFETY_MODE_KEY]);
+        ACCOUNT_SAFETY_STRICT = res?.[ACCOUNT_SAFETY_MODE_KEY] !== "advanced";
+    } catch (e) {
+        ACCOUNT_SAFETY_STRICT = true; // 读取失败时保守：严格
+    }
+}
+loadAccountSafetyMode();
+
+try {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== "local") return;
+        if (!(ACCOUNT_SAFETY_MODE_KEY in changes)) return;
+        const next = changes[ACCOUNT_SAFETY_MODE_KEY].newValue;
+        const wasStrict = ACCOUNT_SAFETY_STRICT;
+        // 缺失/被删除/非 advanced 一律回落严格（fail-safe）
+        ACCOUNT_SAFETY_STRICT = next !== "advanced";
+
+        // H2：从非严格切回严格时，立刻停止任何正在进行的自动化，
+        // 避免“严格模式已开”与“自动化仍在跑”并存。
+        if (ACCOUNT_SAFETY_STRICT && !wasStrict && isRunning) {
+            try {
+                sendMessage({
+                    type: "LOG_MESSAGE",
+                    data: { message: "已切回账号安全模式：正在停止当前自动化运行", type: "warning" }
+                }).catch(() => {});
+            } catch (e) {}
+            try { stopAutoScroll(); } catch (e) {}
+        }
+    });
+} catch (e) {
+    // 扩展上下文失效时可能抛错，忽略
+}
+
+// 严格模式下允许通过的消息（其余平台自动化动作一律拦截）
+const SAFETY_ALLOWED_MESSAGE_TYPES = new Set([
+    "PING_CONTENT", "STOP_SCROLL", "ANALYZE_VISIBLE_CANDIDATES",
+    "MARK_CANDIDATE", "ADD_APPROVED_CANDIDATE", "EXPORT_APPROVED_CANDIDATES",
+    "CLEAR_APPROVED_CANDIDATES", "REMOVE_ADS", "SHOW_ADS",
+    "UPDATE_KEYWORDS", "SETTINGS_UPDATED"
+]);
 
 let enableSound = false;
 
@@ -668,6 +719,11 @@ async function waitForRecommendListRefresh(beforeFingerprint, { doc = document, 
 }
 
 async function switchBossRecommendJob(targetTitle, doc = document) {
+    // 切换岗位是平台点击动作：点击前先熔断，避免验证码已弹出时仍点一下（终审 #2）
+    const risk = detectPlatformRisk();
+    if (risk.tripped) {
+        throw new Error(`${SAFETY_BREAKER_MESSAGE}（信号：${risk.signal}）`);
+    }
     if (!isBossRecommendDocument(doc)) {
         throw new Error("未找到推荐牛人页面上下文");
     }
@@ -1174,17 +1230,17 @@ async function startAutoScroll() {
 
     if (isRunning) return;
 
-    // 检查AI模式的配置要求
-    if (!currentParser?.aiSettings?.aiConfig?.token) {
-        console.error('AI模式需要配置Token');
+    // 检查AI模式的配置要求（Token 已隔离到 background，content 侧只校验模型是否配置）
+    if (!currentParser?.aiSettings?.aiConfig?.model) {
+        console.error('AI模式需要配置AI模型');
         sendMessage({
             type: 'LOG_MESSAGE',
             data: {
-                message: 'AI模式需要配置Token，请先配置AI设置',
+                message: 'AI 未配置，请先在设置里填写 Token 并选择模型',
                 type: 'error'
             }
         });
-        showNotification('⚠️ AI模式需要配置Token', 'status');
+        showNotification('⚠️ 请先配置 AI', 'status');
         return;
     }
 
@@ -1262,6 +1318,32 @@ async function executeScroll() {
         }
         isRunning = false;
         forceStop = false;
+        return;
+    }
+
+    // H2：若中途切回严格安全模式，硬停止自动化循环（不再开详情/打招呼/切岗位）
+    if (ACCOUNT_SAFETY_STRICT) {
+        await sendMessage({
+            type: 'LOG_MESSAGE',
+            data: { message: '账号安全模式已开启，已停止自动化运行', type: 'warning' }
+        }).catch(() => {});
+        stopAutoScroll();
+        return;
+    }
+
+    // H3：自动化循环内熔断——出现验证码/滑块/频控/登录失效等信号立即停止，不提供绕过
+    const loopRisk = detectPlatformRisk();
+    if (loopRisk.tripped) {
+        await sendMessage({
+            type: 'LOG_MESSAGE',
+            data: { message: `⛔ ${SAFETY_BREAKER_MESSAGE}（信号：${loopRisk.signal}）`, type: 'error' }
+        }).catch(() => {});
+        try {
+            if (chrome?.runtime?.id && chrome?.storage?.local) {
+                await chrome.storage.local.set({ isRunning: false });
+            }
+        } catch (e) {}
+        stopAutoScroll();
         return;
     }
 
@@ -1703,8 +1785,19 @@ async function processElement() {
 
                          // 如果需要打招呼
                          if (shouldContact && currentParser?.aiSettings?.greetingEnabled === true) {
-                            if (forceStop) {
+                            if (forceStop || ACCOUNT_SAFETY_STRICT) {
                                 await currentParser.closeDetail();
+                                return false;
+                            }
+                            // H3：打招呼前复检熔断（详情/OCR/AI 期间可能弹出验证）
+                            const greetRisk = detectPlatformRisk();
+                            if (greetRisk.tripped) {
+                                await sendMessage({
+                                    type: 'LOG_MESSAGE',
+                                    data: { message: `⛔ ${SAFETY_BREAKER_MESSAGE}（信号：${greetRisk.signal}）`, type: 'error' }
+                                }).catch(() => {});
+                                await currentParser.closeDetail();
+                                stopAutoScroll();
                                 return false;
                             }
                             await handleGreetCandidate({
@@ -1946,6 +2039,263 @@ async function takeCanvasScreenshot(canvasRect) {
     });
 }
 
+// ======================================================
+// 账号安全模式：只读“分析当前可见候选人” + 平台风险熔断
+// 原则：不打开详情、不截图/OCR、不点击任何 BOSS 页面元素、不翻页、不请求内部接口。
+// 只读取当前已渲染卡片的 DOM 文本 → AI 给建议 → 本地高亮，其余动作全部交给 HR。
+// ======================================================
+
+const SAFETY_BREAKER_MESSAGE = "BOSS 页面出现安全 / 频率 / 验证提示。为保护账号，揽星已停止运行。请在平台内按官方流程处理。";
+
+const PLATFORM_RISK_PATTERNS = [
+    /操作(过于)?频繁/, /访问(过于)?频繁/, /请稍后(再|重)试/, /稍后再试/,
+    /账号(异常|存在风险|受限|被限制|已被冻结)/, /安全验证/, /人机验证/, /滑动验证/,
+    /拖动(下方)?滑块/, /完成(拼图|验证)/, /验证码/, /图形验证/,
+    /登录(已)?(失效|过期)/, /重新登录/, /身份验证/, /异常操作/
+];
+
+function collectRiskDocuments() {
+    let rootDoc = document;
+    try {
+        if (window.top && window.top.document) rootDoc = window.top.document;
+    } catch (e) {
+        // 跨域 top 不可访问，退回当前文档
+    }
+    try {
+        return collectSameOriginDocuments(rootDoc, 6);
+    } catch (e) {
+        return [document];
+    }
+}
+
+// 可见性判定：兼容 position:fixed 浮层（offsetParent 对 fixed 恒为 null，不能用）
+function isRiskElementVisible(el, doc) {
+    if (!el) return false;
+    try {
+        if (el.getClientRects().length === 0) return false;
+        const view = doc.defaultView || window;
+        const style = view.getComputedStyle(el);
+        return style.visibility !== "hidden" && style.display !== "none" && Number(style.opacity || "1") > 0.01;
+    } catch (e) {
+        return true; // 判定失败时保守认为可见（宁可多熔断）
+    }
+}
+
+// 风险文案扫描：排除候选人卡片区域（避免“负责短信验证码系统”等卡片文案误触发），
+// 长页面取首尾，覆盖底部追加的验证浮层文案。
+function getRiskScanText(doc) {
+    try {
+        const body = doc.body;
+        if (!body) return "";
+        // 用 live innerText（布局感知：自动排除 display:none 的休眠弹窗/模板，避免误熔断，终审 #1），
+        // 再减去候选人卡片区域文本（避免卡片文案如“负责短信验证码系统”误触发，L3）。
+        let text = String(body.innerText || "");
+        const cardEls = body.querySelectorAll('#recommend-list, .recommend-card-list, .card-list, [class*="card-list"], [data-geekid]');
+        for (const el of cardEls) {
+            const t = String(el.innerText || "");
+            if (t && text.includes(t)) {
+                text = text.split(t).join(" ");
+            }
+        }
+        if (text.length <= 10000) return text;
+        return `${text.slice(0, 6000)}\n${text.slice(-4000)}`;
+    } catch (e) {
+        return String(doc.body?.innerText || "").slice(0, 6000);
+    }
+}
+
+// 平台风险熔断器：命中验证/滑块组件或风险文案即熔断，不提供任何绕过
+function detectPlatformRisk() {
+    try {
+        const docs = collectRiskDocuments();
+        for (const doc of docs) {
+            const el = doc.querySelector('.geetest_panel, .geetest_holder, [class*="captcha"], [class*="verify-slider"], [class*="slideVerify"], [class*="nc_wrapper"], [class*="verify-wrap"], [id*="captcha"]');
+            if (isRiskElementVisible(el, doc)) {
+                return { tripped: true, signal: "页面出现验证/滑块组件" };
+            }
+            const text = getRiskScanText(doc);
+            for (const p of PLATFORM_RISK_PATTERNS) {
+                const m = text.match(p);
+                if (m) return { tripped: true, signal: m[0] || "风险文案" };
+            }
+        }
+    } catch (e) {
+        // 熔断检测本身失败不触发熔断，避免误伤
+    }
+    return { tripped: false, signal: "" };
+}
+
+function getCardReadonlyText(el) {
+    if (!el) return "";
+    let text = "";
+    try {
+        // 去掉我们自己注入的高亮标签文本，避免污染候选人卡片文本
+        const clone = el.cloneNode(true);
+        clone.querySelectorAll(".lanxing-highlight-reason").forEach((n) => n.remove());
+        text = clone.innerText || clone.textContent || "";
+    } catch (e) {
+        text = el.innerText || el.textContent || "";
+    }
+    return String(text)
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+        .slice(0, 1800);
+}
+
+async function getCardDisplayName(el) {
+    try {
+        if (currentParser?.findNameElement) {
+            const nameEl = await currentParser.findNameElement(el);
+            const name = String(nameEl?.textContent || "").trim();
+            if (name) return name.slice(0, 40);
+        }
+    } catch (e) {
+        // fall back to first line of card text
+    }
+    const first = getCardReadonlyText(el).split("\n").map((s) => s.trim()).find(Boolean);
+    return (first || "未知候选人").slice(0, 40);
+}
+
+function applySafeHighlight(el, level, reason) {
+    const COLORS = window.HR_COLORS || {};
+    let color = "#f59e0b"; // 待定：琥珀色
+    let label = "待定";
+    if (level === "推荐") {
+        color = COLORS.SUCCESS?.border || "#4caf50";
+        label = "推荐看详情";
+    } else if (level === "不建议") {
+        color = COLORS.FAIL?.border || "#ef4444";
+        label = "不建议";
+    }
+    const text = `AI建议:${label}${reason ? ` (${reason})` : ""}`;
+    addHighlightReason(el, text, color);
+}
+
+// 轻量稳定哈希：让只读入池记录带上卡片内容指纹，避免同岗位同名候选人互相覆盖（L2）
+function smallStableHash(str) {
+    let h = 0;
+    const s = String(str || "");
+    for (let i = 0; i < s.length; i++) {
+        h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    }
+    return h.toString(16);
+}
+
+async function analyzeVisibleCandidates(data = {}) {
+    if (!isBossRecommendContext(document)) {
+        return { success: false, error: "NOT_RECOMMEND_CONTEXT" };
+    }
+    if (!await ensureParserReady()) {
+        return { success: false, error: "PARSER_NOT_READY" };
+    }
+
+    // 分析前熔断：命中即停止
+    const risk = detectPlatformRisk();
+    if (risk.tripped) {
+        await sendMessage({ type: "LOG_MESSAGE", data: { message: `⛔ ${SAFETY_BREAKER_MESSAGE}（信号：${risk.signal}）`, type: "error" } }).catch(() => {});
+        return { success: false, breaker: true, signal: risk.signal, error: "PLATFORM_RISK_TRIPPED" };
+    }
+
+    const aiConfig = data?.aiConfig || currentParser?.aiSettings?.aiConfig;
+    if (!aiConfig?.model) return { success: false, error: "AI_CONFIG_MISSING" };
+    if (!window.HR_AI_UTILS?.analyzeCandidateCard) return { success: false, error: "AI_UTILS_MISSING" };
+
+    const positionName = String(data?.positionName || "").trim();
+    const jobDescription = String(data?.jobDescription || "").trim();
+    const positionId = String(data?.positionId || "").trim();
+
+    const all = Array.from(currentParser.findElements() || []);
+    // 只分析当前已渲染、未分析过的卡片；不滚动、不翻页
+    const pending = all.filter((el) => el && el.isConnected && el.dataset && el.dataset.lanxingSafeAnalyzed !== "1");
+    const MAX = Math.max(1, Math.min(30, Number(data?.maxCards || 20)));
+    const targets = pending.slice(0, MAX);
+
+    if (targets.length === 0) {
+        await sendMessage({ type: "LOG_MESSAGE", data: { message: "当前没有待分析的新卡片（安全模式不会自动翻页，请手动滚动后再点分析）", type: "info" } }).catch(() => {});
+        return { success: true, analyzed: 0, recommended: 0, pending: 0 };
+    }
+    if (pending.length > targets.length) {
+        await sendMessage({ type: "LOG_MESSAGE", data: { message: `本次只分析前 ${targets.length} 张（共 ${pending.length} 张待分析）；其余请手动滚动后再次点击`, type: "warning" } }).catch(() => {});
+    }
+
+    let recommended = 0;
+    let redactedCount = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+        const el = targets[i];
+
+        // 每张卡片前复检熔断
+        const midRisk = detectPlatformRisk();
+        if (midRisk.tripped) {
+            await sendMessage({ type: "LOG_MESSAGE", data: { message: `⛔ ${SAFETY_BREAKER_MESSAGE}（信号：${midRisk.signal}）`, type: "error" } }).catch(() => {});
+            return { success: false, breaker: true, signal: midRisk.signal, analyzed: i, recommended };
+        }
+
+        el.classList.add("lanxing-processing");
+        const name = await getCardDisplayName(el);
+        const cardText = getCardReadonlyText(el);
+
+        let level = "待定";
+        let reason = "";
+        let failed = false;
+        try {
+            const r = await window.HR_AI_UTILS.analyzeCandidateCard(cardText, positionName, jobDescription, aiConfig);
+            level = r?.level || "待定";
+            reason = r?.reason || "";
+        } catch (e) {
+            failed = true;
+            level = "待定";
+            reason = `分析失败:${e?.message || e}`;
+        }
+        // 请求/配置失败视为未完成分析，允许后续重试（M5）
+        if (/^(请求失败|分析失败|AI配置)/.test(reason)) failed = true;
+
+        // M5：分析成功才标记为已分析；失败标 "error"（pending 过滤器视为可重试）
+        el.dataset.lanxingSafeAnalyzed = failed ? "error" : "1";
+
+        // AI 理由合规脱敏（即便只是展示也兜底过滤站外/联系方式/夸张承诺等风险词）
+        const filtered = window.LANXING_COMPLIANCE?.filterText?.(reason);
+        const safeReason = filtered ? filtered.text : reason;
+        if (filtered?.redacted) redactedCount += 1;
+
+        applySafeHighlight(el, level, safeReason);
+
+        // 仅“推荐看详情”且分析成功时写入本地人才池（本地短名单，不写回 BOSS）
+        if (level === "推荐" && !failed) {
+            recommended += 1;
+            try {
+                const poolResult = await upsertApprovedCandidateToPool({
+                    candidate: { name, id: `safe_${smallStableHash(`${name}|${cardText}`)}`, geekCard: null },
+                    simpleText: cardText,
+                    detailText: cardText,
+                    resumeText: "",
+                    aiReason: safeReason,
+                    positionId,
+                    positionName,
+                    jobDescription,
+                    decisionSource: "safe_card"
+                });
+                await sendMessage({ type: "TALENT_POOL_UPDATED", data: { total: poolResult.total, inserted: poolResult.inserted, candidateName: name, positionName } }).catch(() => {});
+            } catch (poolError) {
+                console.warn("[CONTENT] 安全模式入池失败:", poolError);
+            }
+        }
+
+        await sendMessage({ type: "LOG_MESSAGE", data: { message: `${i + 1}/${targets.length} ${name}：${level}${safeReason ? `（${safeReason}）` : ""}`, type: level === "推荐" ? "success" : "info" } }).catch(() => {});
+
+        // 仅为节流 AI 调用，不是任何平台动作
+        await new Promise((r) => setTimeout(r, 250));
+    }
+
+    if (redactedCount > 0) {
+        await sendMessage({ type: "LOG_MESSAGE", data: { message: `已对 ${redactedCount} 条 AI 理由做合规脱敏（命中站外/联系方式等风险词）`, type: "warning" } }).catch(() => {});
+    }
+    await sendMessage({ type: "LOG_MESSAGE", data: { message: `分析完成：本次 ${targets.length} 张，推荐看详情 ${recommended} 人（仅本地建议，需你手动查看/沟通）`, type: "success" } }).catch(() => {});
+
+    return { success: true, analyzed: targets.length, recommended, pending: pending.length - targets.length };
+}
+
 // 处理来自popup的消息
 // 本监听器负责处理的消息类型。其余（扩展内部广播，如 LOG_MESSAGE / TALENT_POOL_UPDATED /
 // 打招呼进度等）会被同扩展所有 frame 的 content script 一并收到，不属于本监听器职责——
@@ -1955,20 +2305,33 @@ const HANDLED_MESSAGE_TYPES = new Set([
     'COMMUNICATION_PROCESS', 'OPEN_FIRST_DETAIL', 'MARK_CANDIDATE', 'GREET_CANDIDATE',
     'GET_RESUME_RECT', 'SCROLL_TO_NEXT', 'CLOSE_DETAIL', 'REMOVE_ADS', 'SHOW_ADS',
     'ADD_APPROVED_CANDIDATE', 'EXPORT_APPROVED_CANDIDATES', 'CLEAR_APPROVED_CANDIDATES',
-    'SYNC_BOSS_JOBS', 'SWITCH_RECOMMEND_JOB',
+    'SYNC_BOSS_JOBS', 'SWITCH_RECOMMEND_JOB', 'ANALYZE_VISIBLE_CANDIDATES',
 ]);
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 只在主frame中处理某些消息
     const isMainFrame = window.top === window.self;
-    const mainFrameOnlyMessages = ['START_AI_SCROLL', 'STOP_SCROLL', 'GET_RESUME_RECT', 'OPEN_FIRST_DETAIL', 'CLOSE_DETAIL', 'SCROLL_TO_NEXT'];
-    
+    const mainFrameOnlyMessages = ['START_AI_SCROLL', 'STOP_SCROLL', 'GET_RESUME_RECT', 'OPEN_FIRST_DETAIL', 'CLOSE_DETAIL', 'SCROLL_TO_NEXT', 'ANALYZE_VISIBLE_CANDIDATES'];
+
     const messageType = message.action || message.type;
 
     // 不认识的消息类型直接让出：不 sendResponse、不 return true，交给真正的接收端
     // （popup / background）处理，避免刷红“未知的消息类型”与连带的 message-port 警告。
     if (!HANDLED_MESSAGE_TYPES.has(messageType)) {
         return false;
+    }
+
+    // 账号安全模式：拦截所有平台自动化动作（打招呼 / 自动开详情 / 自动滚动 /
+    // 岗位同步 / 切换岗位 / 简历截图等），只放行只读分析与本地操作。
+    if (ACCOUNT_SAFETY_STRICT && !SAFETY_ALLOWED_MESSAGE_TYPES.has(messageType)) {
+        sendResponse({
+            success: false,
+            status: "error",
+            blocked: true,
+            error: "ACCOUNT_SAFETY_MODE_BLOCKED",
+            message: "账号安全模式已开启：该平台自动化操作已被拦截。所有 BOSS 平台动作需由你手动完成。"
+        });
+        return true;
     }
 
     // BOSS 推荐牛人页面通常在 iframe 内：
@@ -2004,6 +2367,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         url: window.location.href
                     });
                     break;
+                case 'ANALYZE_VISIBLE_CANDIDATES': {
+                    // 账号安全模式：只读分析当前可见候选人卡片
+                    const analyzeResult = await analyzeVisibleCandidates(message.data || {});
+                    sendResponse(analyzeResult);
+                    break;
+                }
                 case 'START_AI_SCROLL':
                     // ... (代码保持不变)
                     // 检查解析器是否已初始化
@@ -2447,8 +2816,10 @@ function markCandidateDecision(element, data = {}) {
     };
 
     // decision: true (Green), false (Red)
-    const color = (data.decision === '是' || data.decision === true) ? COLORS.SUCCESS.border : COLORS.FAIL.border; 
-    const text = `AI:${(data.decision === '是' || data.decision === true) ? '通过' : '淘汰'} ${data.reason ? '(' + data.reason + ')' : ''}`;
+    const color = (data.decision === '是' || data.decision === true) ? COLORS.SUCCESS.border : COLORS.FAIL.border;
+    // M3：所有路径展示的 AI 理由都过合规脱敏（站外/联系方式/夸张承诺等）
+    const safeReason = data.reason ? ((window.LANXING_COMPLIANCE?.filterText?.(data.reason)?.text) ?? data.reason) : '';
+    const text = `AI:${(data.decision === '是' || data.decision === true) ? '通过' : '淘汰'} ${safeReason ? '(' + safeReason + ')' : ''}`;
 
     rememberCandidateIdentity(element, data);
     addHighlightReason(element, text, color);

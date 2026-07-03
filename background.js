@@ -336,6 +336,30 @@ async function captureResumeArea(rect, sendResponse) {
 }
 
 
+// Token 隔离：AI Token 只由 background 从存储读取并注入到 AI 请求，
+// 不经 content script 传递。content script 发来的 token（若有）一律忽略。
+async function getStoredAiToken() {
+    try {
+        const defaultConfig = self.LANXING_CONFIG?.DEFAULT_AI_CONFIG || {};
+        if (defaultConfig.locked === true && defaultConfig.token) return defaultConfig.token;
+        // 活 token 只在 storage.session（content script 读不到）；popup 保存/解锁时写入
+        const res = await chrome.storage.session.get("lanxing_ai_token");
+        return res?.lanxing_ai_token || defaultConfig.token || "";
+    } catch (e) {
+        return "";
+    }
+}
+
+// 账号安全模式（默认严格）：background 侧读取，用于截图等能力的二次防线
+async function isAccountSafetyStrict() {
+    try {
+        const res = await chrome.storage.local.get("lanxing_account_safety_mode");
+        return res?.lanxing_account_safety_mode !== "advanced";
+    } catch (e) {
+        return true; // 读取失败时保守：严格
+    }
+}
+
 // =====================================================
 // 📩 消息路由
 // =====================================================
@@ -397,13 +421,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             return true;
 
         case "CAPTURE_SCREENSHOT":
-            chrome.tabs.captureVisibleTab(null, { format: "png" }, (url) => {
-                sendResponse({ success: true, imageData: url });
-            });
+            (async () => {
+                if (await isAccountSafetyStrict()) {
+                    sendResponse({ success: false, error: "ACCOUNT_SAFETY_MODE_BLOCKED" });
+                    return;
+                }
+                chrome.tabs.captureVisibleTab(null, { format: "png" }, (url) => {
+                    if (chrome.runtime.lastError || !url) {
+                        sendResponse({ success: false, error: chrome.runtime.lastError?.message || "capture_failed" });
+                        return;
+                    }
+                    sendResponse({ success: true, imageData: url });
+                });
+            })();
             return true;
 
         case "CAPTURE_CANVAS_AREA":
-            captureResumeArea(msg.data, sendResponse);
+            (async () => {
+                if (await isAccountSafetyStrict()) {
+                    sendResponse({ success: false, error: "ACCOUNT_SAFETY_MODE_BLOCKED" });
+                    return;
+                }
+                captureResumeArea(msg.data, sendResponse);
+            })();
             return true;
 
         case "LANXING_AI_REQUEST":
@@ -414,10 +454,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     const apiConfig = HR_AI_UTILS.buildApiConfig
                         ? HR_AI_UTILS.buildApiConfig(msg?.data?.apiConfig || {}, providedConfig)
                         : (msg?.data?.apiConfig || self.LANXING_CONFIG?.DEFAULT_API || {});
+                    // Token 只从 background 侧的存储注入，忽略消息里携带的任何 token：
+                    // content script 既不需要、也不应持有 token。
+                    const storedToken = await getStoredAiToken();
                     const aiConfig = {
                         ...defaultConfig,
                         ...providedConfig,
-                        token: providedConfig.token || defaultConfig.token,
+                        token: storedToken,
                         model: providedConfig.model || defaultConfig.model
                     };
                     const messages = msg?.data?.messages;

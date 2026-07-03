@@ -996,6 +996,88 @@ a:focus-visible {
 }
 .save-btn:hover { transform: translateY(-1px); }
 
+/* 风险提示门禁弹窗（不可关闭） */
+.risk-consent-overlay { z-index: 200; }
+.risk-consent-content {
+    width: 360px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+}
+.risk-consent-content .modal-body { overflow-y: auto; }
+.risk-intro {
+    margin: 0 0 12px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--muted);
+}
+.risk-list {
+    margin: 0 0 14px;
+    padding-left: 18px;
+}
+.risk-list li {
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--ink);
+    margin-bottom: 8px;
+}
+.risk-list b { color: var(--danger); }
+.risk-consent-hint {
+    font-size: 11px;
+    color: var(--faint);
+    margin-top: -4px;
+}
+.save-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ============ 账号安全模式 ============ */
+.safety-banner {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    background: color-mix(in oklch, var(--blue) 10%, transparent);
+    border: 1px solid color-mix(in oklch, var(--blue) 28%, transparent);
+    border-radius: var(--radius-md);
+}
+.safety-banner-icon { font-size: 15px; line-height: 1.4; flex: 0 0 auto; }
+.safety-banner-text { font-size: 11.5px; line-height: 1.5; color: var(--ink); }
+.safety-banner-text b { color: var(--blue); }
+
+/* 高级（授权集成）模式下隐藏安全横幅 */
+html:not(.safety-strict) .safety-banner { display: none; }
+
+/* 严格模式下隐藏所有平台自动化入口 */
+html.safety-strict #testButton,
+html.safety-strict #sync-boss-job-list,
+html.safety-strict #queue-add-btn,
+html.safety-strict .greet-daily-row,
+html.safety-strict #greeting-enabled-group,
+html.safety-strict #safety-switch-strict { display: none !important; }
+
+/* 非严格（已解锁高级）模式下隐藏“解锁”按钮 */
+html:not(.safety-strict) #safety-unlock-open { display: none; }
+
+.safety-settings-group { border-top: 1px solid var(--line); padding-top: 12px; }
+.safety-mode-row { display: flex; align-items: center; }
+.safety-mode-status {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+}
+.safety-mode-desc {
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--muted);
+    margin: 6px 0 10px;
+}
+.safety-mode-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.safety-unlock-btn { color: var(--danger); }
+
 /* 滚动条 */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

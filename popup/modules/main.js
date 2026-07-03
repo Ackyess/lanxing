@@ -3,8 +3,11 @@
 // ==============================================
 
 // 🔹 所有模块入口（顺序很重要）
-import { initializeFromServer, loadState, saveSettings, serverData, runtimeState } from "./data.js";
+import { initializeFromServer, loadState, saveSettings, serverData, runtimeState, ACCOUNT_SAFETY_MODE_KEY } from "./data.js";
 import { addLog, showError, updateUI, updateGreetDailyProgress, loadLogs, restoreLogEntry } from "./ui.js";
+import { ensureRiskConsent } from "./consent.js";
+import { applySafetyModeUI, analyzeVisibleCandidates, isSafetyStrict, switchToStrictMode, unlockAdvancedMode } from "./safety.js";
+import { getTokenStorageMode, hasEncryptedToken, unlockToken, getSessionToken } from "./token_store.js";
 
 import "./messages.js";
 
@@ -43,6 +46,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
         // console.log("[POPUP] 初始化开始...");
 
+        // 首次使用风险提示门禁：未同意前阻塞后续初始化
+        await ensureRiskConsent();
+
         // 基础初始化
         await initializeFromServer();   // 加载 Chrome 本地配置
         await initVersionLabel();
@@ -55,6 +61,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         await initializeUI();
         await initializeLogs();
         await refreshTalentPoolSummary();
+
+        // 账号安全模式：应用显隐与主按钮文案（默认严格）
+        applySafetyModeUI();
+
+        // Token 存储：初始化设置项，并在“加密本地但本会话尚未解锁”时提示解锁
+        await initTokenStorageUI();
 
         // AI 初始化
         initializeAI().catch(e => console.error("AI初始化后台错误:", e));
@@ -267,8 +279,51 @@ function bindUIEvents() {
         await clearApprovedTalentPool();
     });
 
-    document.getElementById("scrollButton")?.addEventListener("click", startAutoScroll);
+    // 主按钮：安全模式下走只读分析，高级模式下才是全自动滚动
+    document.getElementById("scrollButton")?.addEventListener("click", () => {
+        if (isSafetyStrict()) {
+            return analyzeVisibleCandidates();
+        }
+        return startAutoScroll();
+    });
     document.getElementById("stopButton")?.addEventListener("click", stopAutoScroll);
+
+    // 账号安全模式设置：切回严格 / 解锁高级授权集成模式
+    document.getElementById("safety-switch-strict")?.addEventListener("click", async () => {
+        await switchToStrictMode();
+    });
+    document.getElementById("safety-unlock-open")?.addEventListener("click", () => {
+        const modal = document.getElementById("integration-unlock-modal");
+        const input = document.getElementById("integration-unlock-input");
+        if (input) input.value = "";
+        modal?.classList.add("active");
+        setTimeout(() => input?.focus(), 50);
+    });
+    document.getElementById("integration-unlock-close")?.addEventListener("click", () => {
+        document.getElementById("integration-unlock-modal")?.classList.remove("active");
+    });
+    document.getElementById("integration-unlock-confirm")?.addEventListener("click", async () => {
+        const ok = await unlockAdvancedMode();
+        if (ok) document.getElementById("integration-unlock-modal")?.classList.remove("active");
+    });
+
+    // Token 存储方式：切换时显隐口令输入
+    const tokenStorageSelect = document.getElementById("token-storage-select");
+    if (tokenStorageSelect) {
+        tokenStorageSelect.addEventListener("change", () => {
+            const pg = document.getElementById("token-passphrase-group");
+            if (pg) pg.style.display = tokenStorageSelect.value === "encrypted" ? "block" : "none";
+        });
+    }
+
+    // Token 解锁弹窗
+    document.getElementById("token-unlock-close")?.addEventListener("click", () => {
+        document.getElementById("token-unlock-modal")?.classList.remove("active");
+    });
+    document.getElementById("token-unlock-confirm")?.addEventListener("click", handleTokenUnlock);
+    document.getElementById("token-unlock-input")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleTokenUnlock();
+    });
 
     document.getElementById("testButton")?.addEventListener("click", async (event) => {
         const button = event.currentTarget;
@@ -304,6 +359,45 @@ function bindUIEvents() {
     });
 
     chrome.storage.onChanged.addListener(handleSettingsChange);
+}
+
+async function initTokenStorageUI() {
+    try {
+        const mode = await getTokenStorageMode();
+        const select = document.getElementById("token-storage-select");
+        if (select) select.value = mode;
+        const pg = document.getElementById("token-passphrase-group");
+        if (pg) pg.style.display = mode === "encrypted" ? "block" : "none";
+
+        // 加密本地模式下，若本会话还没有活 token 但存在密文 → 提示解锁
+        const sessionToken = await getSessionToken();
+        if (!sessionToken && (await hasEncryptedToken())) {
+            const modal = document.getElementById("token-unlock-modal");
+            const input = document.getElementById("token-unlock-input");
+            if (input) input.value = "";
+            modal?.classList.add("active");
+            setTimeout(() => input?.focus(), 60);
+        }
+    } catch (e) {
+        console.warn("初始化 Token 存储 UI 失败:", e);
+    }
+}
+
+async function handleTokenUnlock() {
+    const input = document.getElementById("token-unlock-input");
+    const hint = document.getElementById("token-unlock-hint");
+    const passphrase = String(input?.value || "");
+    if (!passphrase) return;
+    try {
+        const token = await unlockToken(passphrase);
+        serverData.ai_config.token = token || "";
+        document.getElementById("token-unlock-modal")?.classList.remove("active");
+        addLog("AI Token 已解锁（本会话生效）", "success");
+        checkAIConnection();
+    } catch (e) {
+        if (hint) hint.textContent = "口令错误，无法解密。请重试或在设置里重新填写 Token。";
+        console.warn("Token 解锁失败:", e);
+    }
 }
 
 function getLocalDateString(d = new Date()) {
@@ -553,6 +647,13 @@ function openPositionManagerPage() {
 
 function handleSettingsChange(changes, areaName) {
     if (areaName !== "local") return;
+
+    // 账号安全模式在独立 key，跨面板/标签页变更时同步内存态与 UI
+    if (changes[ACCOUNT_SAFETY_MODE_KEY]) {
+        const next = changes[ACCOUNT_SAFETY_MODE_KEY].newValue;
+        serverData.accountSafetyMode = next === "advanced" ? "advanced" : "strict";
+        applySafetyModeUI();
+    }
 
     if (changes.hr_assistant_settings) {
         const newValue = changes.hr_assistant_settings.newValue;

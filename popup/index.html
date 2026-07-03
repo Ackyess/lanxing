@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="safety-strict">
 <head>
     <meta charset="UTF-8" />
     <title>揽星 AI 助手</title>
@@ -39,7 +39,14 @@
             </div>
         </header>
         <main class="app-content">
-            
+
+            <div class="safety-banner" id="safety-banner">
+                <span class="safety-banner-icon">🛡️</span>
+                <div class="safety-banner-text">
+                    <b>账号安全模式</b>：只做 AI 初筛建议，不替你操作 BOSS。自动打招呼、自动打开详情、简历截图 OCR、一键同步岗位、批量自动跑等平台动作已全部关闭，所有平台操作请手动完成。
+                </div>
+            </div>
+
             <div class="card status-card">
                 <div class="card-header">
                     <span class="card-title">
@@ -153,6 +160,31 @@
         </footer>
     </div>
 
+    <div class="modal-overlay risk-consent-overlay" id="risk-consent-modal">
+        <div class="modal-content risk-consent-content">
+            <div class="modal-header">
+                <h3>⚠️ 使用前风险提示</h3>
+            </div>
+            <div class="modal-body">
+                <p class="risk-intro">揽星是浏览器自动化辅助工具，首次使用请阅读并确认以下风险：</p>
+                <ul class="risk-list">
+                    <li><b>账号风险</b>：自动化操作可能违反 Boss 直聘用户协议，存在账号限制 / 封禁风险，后果由你自行承担。</li>
+                    <li><b>数据合规</b>：候选人姓名、联系方式、经历（含简历 OCR / 截图）会作为提示词发往你自行配置的第三方 AI。你是数据处理者，须自行符合《个人信息保护法》等法规并对候选人隐私负责。</li>
+                    <li><b>AI 仅供参考</b>：AI 初筛结论可能出错，招聘决策务必人工复核。</li>
+                    <li>本项目按 MIT 原样提供，不对任何损失负责；是否使用由你自行判断并承担后果。</li>
+                </ul>
+                <div class="form-group">
+                    <label>请输入「我同意」以继续</label>
+                    <input type="text" id="risk-consent-input" placeholder="在此输入：我同意" autocomplete="off" spellcheck="false" />
+                </div>
+                <div class="risk-consent-hint" id="risk-consent-hint">需完整输入「我同意」后方可继续使用</div>
+            </div>
+            <div class="modal-footer">
+                <button class="save-btn" id="risk-consent-confirm" disabled>继续使用</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="ai-config-modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -163,6 +195,17 @@
                 <div class="form-group">
                     <label>AI API Token</label>
                     <input type="password" id="ai-token" placeholder="粘贴你的 API Token" autocomplete="off" spellcheck="false" />
+                </div>
+                <div class="form-group">
+                    <label>Token 存储方式</label>
+                    <select id="token-storage-select">
+                        <option value="session">会话存储（默认·最安全，重启需重输）</option>
+                        <option value="encrypted">加密本地（口令解密，重启免重输）</option>
+                    </select>
+                </div>
+                <div class="form-group" id="token-passphrase-group" style="display:none;">
+                    <label>加密口令</label>
+                    <input type="password" id="token-passphrase" placeholder="用于加密/解密 Token 的口令" autocomplete="off" spellcheck="false" />
                 </div>
                 <div class="form-group">
                     <label>第三方 API URL（可选）</label>
@@ -191,12 +234,24 @@
                         <option value="shown">展开显示</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="greeting-enabled-group">
                     <label>自动打招呼</label>
                     <select id="greeting-enabled-select">
                         <option value="off">关闭（仅标记 / 入池，不打招呼）</option>
                         <option value="on">开启（AI 通过后自动打招呼）</option>
                     </select>
+                </div>
+
+                <div class="form-group safety-settings-group">
+                    <label>账号安全模式</label>
+                    <div class="safety-mode-row">
+                        <span class="safety-mode-status" id="safety-mode-status">严格（默认，推荐）</span>
+                    </div>
+                    <div class="safety-mode-desc">严格模式下只做 AI 只读初筛，不执行任何 BOSS 平台自动化动作，账号风险最低。</div>
+                    <div class="safety-mode-actions">
+                        <button type="button" class="job-action-btn job-action-btn-ghost" id="safety-switch-strict">切回安全模式</button>
+                        <button type="button" class="job-action-btn job-action-btn-ghost safety-unlock-btn" id="safety-unlock-open">解锁授权集成模式（高级）</button>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -205,10 +260,55 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="token-unlock-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔒 解锁 AI Token</h3>
+                <button class="close-modal" id="token-unlock-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="risk-intro">检测到已加密保存的 AI Token。输入口令解锁后本会话生效（不会明文落盘）。</p>
+                <div class="form-group">
+                    <label>加密口令</label>
+                    <input type="password" id="token-unlock-input" placeholder="输入加密口令" autocomplete="off" spellcheck="false" />
+                </div>
+                <div class="risk-consent-hint" id="token-unlock-hint">口令错误将无法解密；忘记口令可在设置里重新填写 Token。</div>
+            </div>
+            <div class="modal-footer">
+                <button class="save-btn" id="token-unlock-confirm">解锁</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="integration-unlock-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚠️ 解锁授权集成模式（高级）</h3>
+                <button class="close-modal" id="integration-unlock-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="risk-intro">授权集成模式会开放自动打招呼、自动打开详情、批量自动跑、一键同步岗位等平台自动化能力，账号封禁风险显著上升。</p>
+                <ul class="risk-list">
+                    <li>仅在你或企业已获得 <b>BOSS 书面授权 / 官方接口 / ATS 接入许可</b> 时才可开启。</li>
+                    <li>开启后所有平台自动化风险与后果由你自行承担。</li>
+                    <li>随时可在设置里「切回安全模式」关闭。</li>
+                </ul>
+                <div class="form-group">
+                    <label>请输入「我已获得BOSS授权」以解锁</label>
+                    <input type="text" id="integration-unlock-input" placeholder="在此输入：我已获得BOSS授权" autocomplete="off" spellcheck="false" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="save-btn" id="integration-unlock-confirm">确认解锁</button>
+            </div>
+        </div>
+    </div>
+
     <script src="../config.js"></script>
     <script src="../utils/prompts.js"></script>
     <script src="../utils/image.js"></script>
     <script src="../utils/ai_helper.js"></script>
+    <script src="../utils/compliance.js"></script>
     <script src="../utils/colors.js"></script>
     <script type="module" src="./modules/main.js"></script>
 </body>

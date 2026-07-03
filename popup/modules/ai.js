@@ -1,8 +1,10 @@
 import { serverData, saveSettings } from "./data.js";
 import { addLog } from "./ui.js";
+import { saveToken } from "./token_store.js";
 import {
 	buildManualAIConfig,
 	validateManualAIConfig,
+	validateSecureApiBaseUrl,
 	DEFAULT_MANUAL_AI_MODEL
 } from "./ai_config.js";
 
@@ -175,11 +177,18 @@ async function saveAIConfig() {
 		const modelSelect = document.getElementById('ai-model');
 		const customModelInput = document.getElementById('ai-custom-model');
 
+		// 不安全的外部地址（非 HTTPS 且非本机回环）在申请权限前就拒绝
+		validateSecureApiBaseUrl(baseUrlInput?.value);
+
 		// 首个 await：在用户手势内申请目标 API 域名权限
 		await ensureApiHostPermission(baseUrlInput?.value);
 
+		// token 输入框留空表示沿用当前会话中的 token（不覆盖）
+		const enteredToken = String(tokenInput?.value || "").trim();
+		const tokenToUse = enteredToken || serverData.ai_config.token || "";
+
 		const nextConfig = buildManualAIConfig({
-			token: tokenInput?.value,
+			token: tokenToUse,
 			baseUrl: baseUrlInput?.value,
 			selectedModel: modelSelect?.value,
 			customModel: customModelInput?.value,
@@ -191,6 +200,13 @@ async function saveAIConfig() {
 			...serverData.ai_config,
 			...nextConfig
 		};
+
+		// Token 加固：token 只写入会话（加密模式再加密落本地），绝不明文进 storage.local
+		const tokenMode = document.getElementById('token-storage-select')?.value === 'encrypted' ? 'encrypted' : 'session';
+		const tokenPassphrase = String(document.getElementById('token-passphrase')?.value || "");
+		if (tokenToUse) {
+			await saveToken(tokenToUse, { mode: tokenMode, passphrase: tokenPassphrase });
+		}
 
 		await saveSettings();
 

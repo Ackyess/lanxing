@@ -12,7 +12,7 @@
       "run_at": "document_start"
    }, {
       "all_frames": true,
-      "js": [ "config.js", "utils/prompts.js", "utils/image.js", "utils/ai_helper.js", "utils/colors.js", "content_scripts/sites/boss.js", "content_scripts/candidate_helpers.js", "content_scripts/index.js" ],
+      "js": [ "config.js", "utils/prompts.js", "utils/image.js", "utils/ai_helper.js", "utils/compliance.js", "utils/colors.js", "content_scripts/sites/boss.js", "content_scripts/candidate_helpers.js", "content_scripts/index.js" ],
       "matches": [ "*://*.zhipin.com/*" ],
       "run_at": "document_end"
    }, {
