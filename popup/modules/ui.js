@@ -39,41 +39,60 @@ export function showError(error) {
 // ------------------------------------------------------
 // 日志输出
 // ------------------------------------------------------
+const LOG_TYPES = new Set(["info", "success", "warning", "error"]);
+const LOG_PREFIX = { error: "!", warning: "?", success: "√", info: ">" };
+
+// 安全渲染一条日志：全程 textContent，杜绝候选人姓名 / AI 输出等不可信内容
+// 经 innerHTML 注入到扩展特权上下文（会导致 API Token 被窃取）。
+function renderLogEntry(container, entry) {
+    const type = LOG_TYPES.has(entry.type) ? entry.type : "info";
+
+    const div = document.createElement("div");
+    div.className = "log-entry";
+    div.style.display = "flex";
+
+    const prefix = document.createElement("span");
+    prefix.className = "log-prefix";
+    prefix.textContent = LOG_PREFIX[type];
+
+    const body = document.createElement("span");
+    body.className = "log-msg log-" + type;
+    body.textContent = `[${entry.ts}] ${entry.msg}`;
+
+    div.appendChild(prefix);
+    div.appendChild(body);
+    container.appendChild(div);
+}
+
+// 恢复历史日志（供 main.js 调用）：从原始文本重建，绝不信任存储里的 html
+export function restoreLogEntry(container, entry) {
+    renderLogEntry(container, {
+        type: entry?.type,
+        ts: entry?.ts || "",
+        msg: String(entry?.msg ?? ""),
+    });
+}
+
 export async function addLog(message, type = "info") {
     const logContainer = document.getElementById("log-container");
     if (!logContainer) return;
 
+    const t = LOG_TYPES.has(type) ? type : "info";
     const ts = new Date().toLocaleTimeString("zh-CN", {
         hour12: false,
         hour: "2-digit",
         minute: "2-digit",
         second: "2-digit",
     });
+    const msg = String(message ?? "");
 
-    const prefixMap = {
-        error: "!",
-        warning: "?",
-        success: "√",
-        info: ">",
-    };
-
-    const html = `
-        <span class="log-prefix">${prefixMap[type]}</span>
-        <span class="log-msg log-${type}">[${ts}] ${message}</span>
-    `;
-
-    const div = document.createElement("div");
-    div.className = "log-entry";
-    div.style.display = "flex";
-    div.innerHTML = html;
-
-    logContainer.appendChild(div);
+    renderLogEntry(logContainer, { type: t, ts, msg });
     logContainer.parentElement.scrollTop = logContainer.parentElement.scrollHeight;
 
-    // 持久化日志（仅保存文本，不保存 html）
+    // 持久化：只存原始文本，不再存 html（旧 html 也不再被信任）
     try {
         const logs = await loadLogs();
-        logs.push({ type, ts, msg: message, html });
+        logs.push({ type: t, ts, msg });
 
         if (logs.length > 100) logs.splice(0, logs.length - 100);
 

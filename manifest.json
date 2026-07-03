@@ -22,7 +22,8 @@
       "run_at": "document_end"
    } ],
    "description": "面向 HR 场景的 AI 辅助工具，用于简历初筛与信息整理，帮助提升招聘流程效率。",
-   "host_permissions": [ "https://*.zhipin.com/*", "https://*/*" ],
+   "host_permissions": [ "https://*.zhipin.com/*" ],
+   "optional_host_permissions": [ "https://*/*" ],
    "icons": {
       "128": "icons/128.png",
       "16": "icons/16.png",

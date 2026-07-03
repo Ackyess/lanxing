@@ -4,7 +4,7 @@
 
 // 🔹 所有模块入口（顺序很重要）
 import { initializeFromServer, loadState, saveSettings, serverData, runtimeState } from "./data.js";
-import { addLog, showError, updateUI, updateGreetDailyProgress } from "./ui.js";
+import { addLog, showError, updateUI, updateGreetDailyProgress, loadLogs, restoreLogEntry } from "./ui.js";
 
 import "./messages.js";
 
@@ -118,8 +118,7 @@ async function initializeUI() {
 }
 
 async function initializeLogs() {
-    const logs = await chrome.storage.local.get("hr_assistant_logs")
-        .then(res => res.hr_assistant_logs || []);
+    const logs = await loadLogs();
 
     const container = document.getElementById("log-container");
     container.innerHTML = "";
@@ -127,13 +126,8 @@ async function initializeLogs() {
     if (logs.length === 0) {
         addLog("系统就绪，等待开始...");
     } else {
-        logs.forEach(entry => {
-            const div = document.createElement("div");
-            div.className = "log-entry";
-            div.style.display = "flex";
-            div.innerHTML = entry.html;
-            container.appendChild(div);
-        });
+        // 从原始文本安全重建，不 innerHTML 存储的 html
+        logs.forEach(entry => restoreLogEntry(container, entry));
     }
 }
 

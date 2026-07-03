@@ -148,12 +148,36 @@ async function refreshModelList() {
 	}
 }
 
+// 运行时按“具体 API 域名”申请可选主机权限（绕过 CORS 必需）。
+// 默认安装只要 zhipin 权限，用户配置自定义 API 时才按需授权该单个域名，
+// 而不是安装即索要“所有网站”。必须在用户手势内、作为首个 await 调用。
+async function ensureApiHostPermission(baseUrl) {
+	const raw = String(baseUrl || '').trim();
+	if (!raw) return;
+	let origin;
+	try { origin = new URL(raw).origin; } catch { return; }
+	if (!origin.startsWith('https://')) return;
+	if (/(^|\.)zhipin\.com$/.test(new URL(raw).hostname)) return; // 已在必需权限内
+	try {
+		const granted = await chrome.permissions.request({ origins: [origin + '/*'] });
+		if (!granted) {
+			addLog(`未授予 ${origin} 的访问权限，AI 连接可能失败（重新保存可再次授权）`, 'warning');
+		}
+	} catch (e) {
+		// 个别环境不支持可选权限，忽略
+	}
+}
+
 async function saveAIConfig() {
 	try {
 		const tokenInput = document.getElementById('ai-token');
 		const baseUrlInput = document.getElementById('ai-base-url');
 		const modelSelect = document.getElementById('ai-model');
 		const customModelInput = document.getElementById('ai-custom-model');
+
+		// 首个 await：在用户手势内申请目标 API 域名权限
+		await ensureApiHostPermission(baseUrlInput?.value);
+
 		const nextConfig = buildManualAIConfig({
 			token: tokenInput?.value,
 			baseUrl: baseUrlInput?.value,
