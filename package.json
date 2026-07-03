@@ -1,6 +1,6 @@
 {
   "name": "lanxing-recovered",
-  "version": "1.0.6",
+  "version": "1.0",
   "private": true,
   "description": "Recovered local workspace for the 揽星 Chrome extension.",
   "type": "module",

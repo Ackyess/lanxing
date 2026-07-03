@@ -37,7 +37,7 @@
       "default_path": "popup/index.html"
    },
    "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "1.0.6",
+   "version": "1.0",
    "web_accessible_resources": [ {
       "matches": [ "https://*.zhipin.com/*" ],
       "resources": [ "content_scripts/sites/boss_interceptor.js", "sounds/*.mp3", "popup/index.html" ]
